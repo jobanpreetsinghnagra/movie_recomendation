@@ -1,0 +1,324 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #1E1E1E;
+    color: #E0E0E0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 40px 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+}
+
+.title {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 3.5rem;
+    color: #FFFFFF;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.search-container {
+    width: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: #2D2D2D;
+    border-radius: 12px;
+    padding: 12px 16px;
+    gap: 12px;
+}
+
+.search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #E0E0E0;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 1rem;
+}
+
+.search-input::placeholder {
+    color: #9E9E9E;
+}
+
+.search-icons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: #9E9E9E;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.icon-btn:hover {
+    color: #E0E0E0;
+}
+
+.search-results {
+    width: 100%;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: #2D2D2D;
+    border-radius: 12px;
+    padding: 8px;
+    display: none;
+}
+
+.search-results.active {
+    display: block;
+}
+
+.search-result-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.search-result-item:hover {
+    background-color: #3A3A3A;
+}
+
+.search-result-item.selected {
+    background-color: #3A3A3A;
+    opacity: 0.7;
+}
+
+.section-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 1.25rem;
+    color: #FFFFFF;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+/* Selected Movies - distinct bordered container with individual items */
+.selected-movies-section {
+    width: 100%;
+}
+
+.selected-movies-section .section-title {
+    font-family: 'Inter', serif;
+    font-style: medium;
+    font-weight: 500;
+}
+
+.selected-movies-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background-color: #2D2D2D;
+    border: 1px solid #4A4A4A;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.selected-movie-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: transparent;
+    border-bottom: 1px solid #3A3A3A;
+    gap: 12px;
+}
+
+.selected-movie-item:last-child {
+    border-bottom: none;
+}
+
+.movie-checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.movie-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #4A9EFF;
+}
+
+.movie-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 1rem;
+    color: #E0E0E0;
+    flex: 1;
+}
+
+.movie-rating {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 1rem;
+    color: #E0E0E0;
+}
+
+.rating-input {
+    background-color: #1E1E1E;
+    border: 1px solid #3A3A3A;
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: #E0E0E0;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    width: 60px;
+    text-align: center;
+}
+
+.rating-input:focus {
+    outline: none;
+    border-color: #4A9EFF;
+}
+
+.remove-movie-btn {
+    background: transparent;
+    border: none;
+    color: #9E9E9E;
+    cursor: pointer;
+    padding: 4px;
+    font-size: 1.2rem;
+    transition: color 0.2s;
+}
+
+.remove-movie-btn:hover {
+    color: #FF4444;
+}
+
+/* Recommended Movies - different layout: single bordered container, titles left, ratings right */
+.recommended-movies-section {
+    width: 100%;
+}
+
+.recommended-movies-section .section-title {
+    font-family: 'Inter', sans-serif;
+    font-style: medium;
+    font-weight: 500;
+}
+
+.recommended-movies-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background-color: #2D2D2D;
+    border: 1px solid #4A4A4A;
+    border-radius: 12px;
+    padding: 12px 16px;
+    overflow: hidden;
+}
+
+.recommended-movie-item {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 10px 0;
+    background-color: transparent;
+    border-bottom: 1px solid #3A3A3A;
+}
+
+.recommended-movie-item:last-child {
+    border-bottom: none;
+}
+
+.empty-message {
+    text-align: center;
+    color: #9E9E9E;
+    padding: 16px;
+}
+
+.recommended-movie-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+    font-size: 1rem;
+    color: #E0E0E0;
+}
+
+.recommendations-btn {
+    width: 100%;
+    padding: 16px;
+    background-color: #2D2D2D;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    color: #FFFFFF;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+    margin-top: 10px;
+}
+
+.recommendations-btn:hover,
+.recommendations-btn:focus {
+    background-color: #3A3A3A;
+    border-color: #4A9EFF;
+    outline: none;
+}
+
+.recommendations-btn:active {
+    background-color: #2D2D2D;
+}
+
+/* Scrollbar styling */
+.search-results::-webkit-scrollbar {
+    width: 8px;
+}
+
+.search-results::-webkit-scrollbar-track {
+    background: #1E1E1E;
+    border-radius: 4px;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+    background: #3A3A3A;
+    border-radius: 4px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+    background: #4A4A4A;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .title {
+        font-size: 2.5rem;
+    }
+    
+    .container {
+        gap: 24px;
+    }
+}

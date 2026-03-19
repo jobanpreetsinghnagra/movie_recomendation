@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cinemind - Movie Recommendations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,500;1,600;1,700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Cinemind</h1>
+        
+        <div class="search-container">
+            <input 
+                type="text" 
+                id="movieSearch" 
+                class="search-input" 
+                placeholder="Search for the movie you have seen or felt like watching"
+                autocomplete="off"
+            >
+            <div class="search-icons">
+                <button class="icon-btn" id="clearBtn" title="Clear search">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 8L4 4M8 8L12 12M8 8L12 4M8 8L4 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="searchBtn" title="Search">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M10 10L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="searchResults" class="search-results"></div>
+
+        <div id="selectedMoviesSection" class="selected-movies-section" style="display: none;">
+            <h2 class="section-title">Selected Movies</h2>
+            <div id="selectedMoviesList" class="selected-movies-list"></div>
+        </div>
+
+        <div id="recommendedMoviesSection" class="recommended-movies-section">
+            <h2 class="section-title">Recommended Movies</h2>
+            <div id="recommendedMoviesList" class="recommended-movies-list">
+                <!-- Initial recommendations will be loaded here -->
+            </div>
+        </div>
+
+        <button id="getRecommendationsBtn" class="recommendations-btn" style="display: none;">
+            Get Recommendations
+        </button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
