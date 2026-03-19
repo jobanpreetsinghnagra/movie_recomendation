@@ -5,15 +5,18 @@ recommendations based on movieIDs selected by the user in the frontend.
 
 Run:
     uvicorn api:app --reload --host 0.0.0.0 --port 5000
+    # (Production) uvicorn api:app --host 0.0.0.0 --port $PORT
 """
 
 import os
 import logging
+import threading
 from contextlib import asynccontextmanager
 from typing import List
 
 import numpy as np
 import pandas as pd
+import pyarrow.dataset as pa_ds
 import torch
 import torch.nn as nn
 from fastapi import FastAPI, HTTPException
@@ -34,6 +37,40 @@ RATINGS_PATH  = "data/processed/ratings.parquet"    # Optional: only needed for 
 MOVIES_PATH   = "data/raw/movies.csv"               # moviesys/dataset/movies.csv
 EMBEDDING_DIM = 64                                  # must match training (fallback if not in checkpoint)
 TOP_K_DEFAULT = 10                                  # recommendations returned by default
+
+
+# --------------------------------------------------------------------------- #
+# Low-memory helpers
+def load_user_item_mappings_from_ratings_parquet_low_memory(ratings_path: str):
+    """
+    Reconstruct userId/movieId -> embedding index mappings without loading the
+    full parquet into a pandas DataFrame (memory-safe fallback for legacy
+    checkpoints).
+    """
+    if not os.path.exists(ratings_path):
+        raise RuntimeError(f"ratings.parquet not found at: {ratings_path}")
+
+    log.info("Loading user/item mappings from %s (low-memory mode)…", ratings_path)
+    dataset = pa_ds.dataset(ratings_path, format="parquet")
+
+    users = set()
+    items = set()
+
+    # Stream batches and keep only unique IDs.
+    for batch in dataset.to_batches(columns=["userId", "movieId"], batch_size=65536):
+        user_idx = batch.schema.get_field_index("userId")
+        item_idx = batch.schema.get_field_index("movieId")
+        user_col = batch.column(user_idx).to_numpy(zero_copy_only=False)
+        item_col = batch.column(item_idx).to_numpy(zero_copy_only=False)
+        users.update(np.unique(user_col).tolist())
+        items.update(np.unique(item_col).tolist())
+
+    unique_users = sorted(users)
+    unique_items = sorted(items)
+
+    user_to_idx = {u: i for i, u in enumerate(unique_users)}
+    item_to_idx = {m: i for i, m in enumerate(unique_items)}
+    return user_to_idx, item_to_idx
 
 
 
@@ -86,20 +123,27 @@ class MovieRecommender:
             self.ratings_df = None  # Not needed when using full checkpoint
         else:
             # Legacy format: just state_dict, need to reconstruct from ratings.parquet
-            log.warning("Checkpoint appears to be state_dict only. Loading ratings.parquet to reconstruct mappings…")
+            log.warning(
+                "Checkpoint appears to be state_dict only. Reconstructing mappings from ratings.parquet (low-memory mode)…"
+            )
             if not os.path.exists(RATINGS_PATH):
                 raise RuntimeError(
                     f"Model checkpoint doesn't contain metadata and {RATINGS_PATH} is missing. "
                     "Please retrain the model using the save_model() method that includes metadata."
                 )
-            self.ratings_df = pd.read_parquet(RATINGS_PATH)
-            unique_users = sorted(self.ratings_df["userId"].unique())
-            unique_items = sorted(self.ratings_df["movieId"].unique())
-            self.user_to_idx = {u: i for i, u in enumerate(unique_users)}
-            self.item_to_idx = {m: i for i, m in enumerate(unique_items)}
-            self.num_users = len(unique_users)
-            self.num_items = len(unique_items)
+            # Keep memory usage low: only load unique user/item IDs, not the full ratings table.
+            self.ratings_df = None
+            self.user_to_idx, self.item_to_idx = load_user_item_mappings_from_ratings_parquet_low_memory(RATINGS_PATH)
+            self.num_users = len(self.user_to_idx)
+            self.num_items = len(self.item_to_idx)
+
+            # Try to infer embedding_dim from the state_dict (avoids mismatch).
             embedding_dim = EMBEDDING_DIM
+            for key in ("user_embeddings.weight", "module.user_embeddings.weight", "model.user_embeddings.weight"):
+                t = checkpoint.get(key)
+                if t is not None and getattr(t, "ndim", 0) == 2:
+                    embedding_dim = int(t.shape[1])
+                    break
             state_dict = checkpoint
 
         # Build reverse mapping
@@ -114,13 +158,14 @@ class MovieRecommender:
         self.model.eval()
         log.info("Model loaded successfully ✓")
 
-        #  pre-compute all item embeddings + biases 
-        with torch.no_grad():
-            all_idx = torch.arange(self.num_items, device=self.device)
-            self._all_item_emb   = self.model.item_embeddings(all_idx)   # (N, D)
-            self._all_item_bias  = self.model.item_bias(all_idx).squeeze()  # (N,)
-            self._global_bias    = self.model.global_bias.item()
-        log.info("Item embeddings cached ✓")
+    def ensure_ratings_df_loaded(self):
+        """Load ratings.parquet only when a heavy endpoint needs it."""
+        if self.ratings_df is not None:
+            return
+        if not os.path.exists(RATINGS_PATH):
+            raise RuntimeError(f"ratings.parquet not found at {RATINGS_PATH}")
+        log.info("Loading ratings.parquet for /api/movies/popular …")
+        self.ratings_df = pd.read_parquet(RATINGS_PATH)
 
     # ------------------------------------------------------------------ #
     def recommend(self, movie_ids: List[int], k: int = TOP_K_DEFAULT):
@@ -155,9 +200,10 @@ class MovieRecommender:
             user_vec = self.model.item_embeddings(watched_idx).mean(dim=0)  # (D,)
 
             # Score every item
-            scores = (self._all_item_emb @ user_vec).cpu().numpy()          # (N,)
-            scores += self._all_item_bias.cpu().numpy()
-            scores += self._global_bias
+            # Use model weights directly (avoids duplicating large embedding tensors in RAM).
+            scores = (self.model.item_embeddings.weight @ user_vec).detach().cpu().numpy()  # (N,)
+            scores += self.model.item_bias.weight.detach().squeeze(-1).cpu().numpy()
+            scores += float(self.model.global_bias.detach().cpu().item())
 
         # Exclude watched items
         watched_set = set(valid_ids)
@@ -223,15 +269,28 @@ class RecommendResponse(BaseModel):
 
 # App + lifespan (startup / shutdown)
 recommender: MovieRecommender | None = None   # global singleton
+recommender_lock = threading.Lock()
+
+def get_recommender() -> MovieRecommender:
+    """
+    Lazy-load the heavy recommender so the service can start even under tight
+    memory limits (e.g., free-tier deployments).
+    """
+    global recommender
+    if recommender is None:
+        with recommender_lock:
+            if recommender is None:
+                log.info("Loading recommender on first request…")
+                recommender = MovieRecommender()
+    return recommender
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup
-    global recommender
     log.info("=== CineMind API starting up ===")
 
-    # Only MODEL_PATH and MOVIES_PATH are required
+    # Only MODEL_PATH and MOVIES_PATH are required; avoid loading heavy tensors here.
     missing = [p for p in [MODEL_PATH, MOVIES_PATH] if not os.path.exists(p)]
     if missing:
         log.error("Missing required files: %s", missing)
@@ -242,7 +301,6 @@ async def lifespan(app: FastAPI):
     if not os.path.exists(RATINGS_PATH):
         log.warning("ratings.parquet not found. /api/movies/popular endpoint will be unavailable.")
 
-    recommender = MovieRecommender()
     log.info("=== API ready ===")
     yield
     # shutdown
@@ -309,8 +367,7 @@ def get_recommendations(body: RecommendRequest):
             "requested_k": 10
         }
     """
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Model not loaded yet — try again shortly.")
+    rec = get_recommender()
 
     # Convert string IDs → int (frontend sends strings)
     try:
@@ -320,9 +377,9 @@ def get_recommendations(body: RecommendRequest):
 
     k = max(1, min(body.k, 100))   # clamp between 1 and 100
 
-    recs = recommender.recommend(int_ids, k=k)
+    recs = rec.recommend(int_ids, k=k)
 
-    valid_count = len([m for m in int_ids if m in recommender.item_to_idx])
+    valid_count = len([m for m in int_ids if m in rec.item_to_idx])
 
     return RecommendResponse(
         recommendations=recs,
@@ -334,22 +391,23 @@ def get_recommendations(body: RecommendRequest):
 @app.get("/api/movies/popular", tags=["movies"])
 def popular_movies(n: int = 20):
     """Return the n most-rated movies (useful for debugging / seeding the UI)."""
-    if recommender is None:
-        raise HTTPException(status_code=503, detail="Model not loaded yet.")
-
-    # Check if ratings_df is available (only if checkpoint was state_dict only)
-    if not hasattr(recommender, 'ratings_df') or recommender.ratings_df is None:
+    if not os.path.exists(RATINGS_PATH):
         raise HTTPException(
             status_code=503,
-            detail="Popular movies endpoint requires ratings.parquet. "
-            "This endpoint is only available when using legacy model format."
+            detail="ratings.parquet not found; /api/movies/popular is unavailable.",
         )
 
+    rec = get_recommender()
+    try:
+        rec.ensure_ratings_df_loaded()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
     counts = (
-        recommender.ratings_df.groupby("movieId")
+        rec.ratings_df.groupby("movieId")
         .size()
         .reset_index(name="num_ratings")
-        .merge(recommender.movies_df[["movieId", "title"]], on="movieId", how="left")
+        .merge(rec.movies_df[["movieId", "title"]], on="movieId", how="left")
         .sort_values("num_ratings", ascending=False)
         .head(n)
     )

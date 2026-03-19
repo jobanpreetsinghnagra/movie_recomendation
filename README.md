@@ -87,6 +87,7 @@ From the project root:
 
 ```bash
 uvicorn api:app --reload --host 0.0.0.0 --port 5000
+# (Production / Render) uvicorn api:app --host 0.0.0.0 --port $PORT
 ```
 
 **3. Start the frontend server**
