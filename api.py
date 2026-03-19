@@ -21,6 +21,8 @@ import torch
 import torch.nn as nn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 # Logging
@@ -32,6 +34,7 @@ logging.basicConfig(
 log = logging.getLogger("cinemind")
 
 # Config
+BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH    = "models/model_weights.pth"          # root of moviesys/
 RATINGS_PATH  = "data/processed/ratings.parquet"    # Optional: only needed for /api/movies/popular endpoint
 MOVIES_PATH   = "data/raw/movies.csv"               # moviesys/dataset/movies.csv
@@ -324,10 +327,14 @@ app.add_middleware(
 
 
 # Routes
-@app.get("/", tags=["health"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["health"])
 def root():
-    """Quick health-check — confirms the API is running."""
-    return {"status": "ok", "message": "CineFind API is running 🎬"}
+    """Serve the frontend UI."""
+    index_path = os.path.join(BASE_DIR, "frontend", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    # Fallback for dev/debug if frontend isn't present.
+    return {"status": "ok", "message": "Frontend not found; API is running 🎬"}
 
 
 @app.get("/health", tags=["health"])
@@ -340,6 +347,17 @@ def health():
         "device": recommender.device if loaded else None,
         "num_items": recommender.num_items if loaded else None,
     }
+
+@app.get("/movies_1.json", include_in_schema=False)
+def movies_1_json():
+    """
+    Serves movie titles to the frontend.
+    The JS fetches it as a relative URL (e.g. `fetch('movies_1.json')`).
+    """
+    json_path = os.path.join(BASE_DIR, "data", "processed", "movies_1.json")
+    if not os.path.exists(json_path):
+        raise HTTPException(status_code=404, detail="movies_1.json not found.")
+    return FileResponse(json_path)
 
 
 @app.post(
@@ -412,3 +430,10 @@ def popular_movies(n: int = 20):
         .head(n)
     )
     return counts[["movieId", "title", "num_ratings"]].to_dict(orient="records")
+
+
+# Serve frontend static assets (styles.css, script.js, etc.)
+# Keep this after API routes so `/api/*` and `/health` continue to work.
+frontend_dir = os.path.join(BASE_DIR, "frontend")
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir), name="frontend")

@@ -8,7 +8,8 @@ const state = {
 
 // API Configuration - Ready for Flask backend integration
 const API_CONFIG = {
-    baseURL: 'http://localhost:5000/api', // Update with your Flask API URL
+    // Same-origin API base (works on Render when frontend is served by FastAPI)
+    baseURL: '/api',
     endpoints: {
         recommendations: '/movies/recommendations'
     }
